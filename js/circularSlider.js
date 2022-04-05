@@ -1,3 +1,5 @@
+(function(window, document, $) {
+
 var create_tick = function(x, y, angle, cl) {
     /* create_tick
      *
@@ -32,10 +34,12 @@ var create_break = function(x, y, angle, cl, text) {
 }
 
 var angular_dist = function(a, b) {
+    /* Compute the distance between two angles */
     return Math.min(Math.abs(b - a), Math.abs(b - (a + 2 * Math.PI)), Math.abs((b + 2 * Math.PI) - a))
 }
 
 var arc_length = function(from, to) {
+    /* Compute the length of an arc */
     if (from > to)
         from = -(2 * Math.PI - from)
     return to - from
@@ -45,14 +49,13 @@ class CircularSlider {
     /* CircularSlider
      *
      * Design improvements for the future:
-     * - Make it responsive
-     * - Use self-invoking function or find another way to hide some 
-     *   methods
+     * - Make it responsive (how?)
+     * - Use JQuery's event delegation
      * - Add classes cisl-event-*
+     * - Add a method to update the config dynamically
      */
-    constructor(id, options = {}) {
-        id = "#" + id.replace(/^#/, "")
-        this.$input = $(id)
+    constructor(input, options = {}) {
+        this.$input = $(input)
         this.$input.hide()
 
         // User configuration
@@ -102,8 +105,8 @@ class CircularSlider {
         // To make it responsive, catch resizing events or css changes 
         // and re-draw the thing.
         // TODO: allow for initial rotation of the ruler
-        var cisl_id = id + '-cisl'
-        this.draw_slider(id, cisl_id)
+        var cisl_id = "#" + this.$input.attr("id") + "-cisl"
+        this.draw_slider(cisl_id)
 
         // Set the positions of the moving parts
         this.angle_from = null
@@ -140,6 +143,7 @@ class CircularSlider {
                 }
             }.bind(this))
         }.bind(this))
+
         $(cisl_id + " .cisl-rails," + cisl_id + " .cisl-bar," + cisl_id + " .cisl-label-from-to").on("mousedown touchstart", function(e_down) {
             e_down.preventDefault()
             var pageX = e_down.pageX || e_down.originalEvent.touches[0].pageX
@@ -306,8 +310,8 @@ class CircularSlider {
         return this.value2angle(this.angle2value(angle))
     }
 
-    draw_slider = function(id, cisl_id) {
-        $(id).after(
+    draw_slider = function(cisl_id) {
+        this.$input.after(
             '<svg id=' + cisl_id.replace(/^#/, "") + ' height=' + this.config.height + ' width=' + this.config.width + '>' +
             '<foreignObject width=100% height=100%>' +
             '<span class="cisl-label cisl-label-from cisl--style"></span>' +
@@ -454,6 +458,10 @@ class CircularSlider {
         return this.angle2value(this.angle_from) + this.config.values_sep + this.angle2value(this.angle_to)
     }
 
+    get_value_array = function() {
+        return [this.angle2value(this.angle_from), this.angle2value(this.angle_to)]
+    }
+
     format_label = function(n) {
         // return Math.trunc(n * Math.pow(10, this.config.digits)) / Math.pow(10, this.config.digits)
         return n.toFixed(this.config.digits)
@@ -468,6 +476,20 @@ class CircularSlider {
         if ((config.max - config.min) / config.step < 3) {
             throw Error("Not enough steps: at least three are required; either increase the range of the slider or decrease the step size.")
         }
+        if (config.height != config.width) {
+            console.warn("Width cannot be different from height; I'm now setting them to the same value. Please try again when ellipses will be supported.")
+            config.height = config.width = Math.min(config.height, config.width)
+        }
         return config
     }
 }
+
+$.fn.circularSlider = function(options) {
+    return this.each(function() {
+        if (!$.data(this, "circularSlider")) {
+            $.data(this, "circularSlider", new CircularSlider(this, options))
+        }
+    })
+}
+
+})(window, document, jQuery)
