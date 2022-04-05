@@ -1,38 +1,90 @@
+var create_tick = function(x, y, angle, cl) {
+    /* create_tick
+     *
+     * JQuery cannot handle SVG directly because SVG elements lie in a 
+     * different namespace than HTML elements. Therefore, we need to 
+     * create SVG elements first, and then append them. This function 
+     * creates ticks.
+     */
+    var t = document.createElementNS("http://www.w3.org/2000/svg", "rect")
+    t.setAttributeNS(null, "class", cl)
+    t.setAttributeNS(null, "x", x)
+    t.setAttributeNS(null, "y", y)
+    t.setAttributeNS(null, "style", "transform: translate(-50%, -100%) rotate(" + angle + "rad)")
+    return $(t)
+}
+
+var create_break = function(x, y, angle, cl, text) {
+    /* create_break
+     *
+     * JQuery cannot handle SVG directly because SVG elements lie in a 
+     * different namespace than HTML elements. Therefore, we need to 
+     * create SVG elements first, and then append them. This function 
+     * creates breaks.
+     */
+    var t = document.createElementNS("http://www.w3.org/2000/svg", "text")
+    t.setAttributeNS(null, "class", cl)
+    t.setAttributeNS(null, "x", x)
+    t.setAttributeNS(null, "y", y)
+    t.setAttributeNS(null, "style", "transform: rotate(" + angle + "rad)")
+    t.appendChild(document.createTextNode(text))
+    return $(t)
+}
+
+var angular_dist = function(a, b) {
+    return Math.min(Math.abs(b - a), Math.abs(b - (a + 2 * Math.PI)), Math.abs((b + 2 * Math.PI) - a))
+}
+
+var arc_length = function(from, to) {
+    if (from > to)
+        from = -(2 * Math.PI - from)
+    return to - from
+}
+
 class CircularSlider {
     /* CircularSlider
      *
      * Design improvements for the future:
-     * - Use SVG instead of CSS tricks
-     * - Function to redraw the whole thing (e.g. when css properties change)
-     * - Private class methods
+     * - Make it responsive
+     * - Use self-invoking function or find another way to hide some 
+     *   methods
+     * - Add classes cisl-event-*
      */
     constructor(id, options = {}) {
-        id = "#" + id.replace(/^#/, "");
-        this.$input = $(id);
+        id = "#" + id.replace(/^#/, "")
+        this.$input = $(id)
         this.$input.hide()
 
         // User configuration
         var config = {
+            height: 900,
+            width: 900,
             min: 0,
             max: 2 * Math.PI,
-            from: 0, // initial values for start and to
+            from: 0, // initial values for from and to
             to: Math.PI / 4,
-            step: Math.PI / 50, // DOC: can be null, in which case we've got a continuous slider
-            n_breaks: 60,
-            major_breaks_every: 6, // put a major break (and a label) every x minor breaks
-            digits: 2, // how many digits should labels have
+            step: (2 * Math.PI) / 50, // DOC: can be null, in which case we've got a continuous slider
+            breaks_n: 60,
+            major_breaks_every: 5, // put a major break (and a label) every x minor breaks
+            breaks_altitude: 45, // altitude of the break
+            labels_altitude: 40, // altitude of the labels
+            digits: 2, // how many digits should labels and breaks have
             prefix: "",
             postfix: "",
             values_sep: ":"
         }
         var data_config = {
+            height: this.$input.data("height"),
+            width: this.$input.data("width"),
             min: this.$input.data("min"),
             max: this.$input.data("max"),
             from: this.$input.data("from"),
             to: this.$input.data("to"),
             step: this.$input.data("step"),
-            n_breaks: this.$input.data("n-breaks"),
+            breaks_n: this.$input.data("breaks-n"),
             major_breaks_every: this.$input.data("major-breaks-every"),
+            breaks_altitude: this.$input.data("breaks-altitude"),
+            labels_altitude: this.$input.data("labels-altitude"),
             digits: this.$input.data("digits"),
             prefix: this.$input.data("prefix"),
             postfix: this.$input.data("postfix"),
@@ -40,52 +92,23 @@ class CircularSlider {
         }
         for (var prop in data_config) {
             if (data_config.hasOwnProperty(prop) && (data_config[prop] === undefined || data_config[prop] === "")) {
-                delete data_config[prop];
+                delete data_config[prop]
             }
         }
-        $.extend(config, data_config);
-        $.extend(config, options);
-        this.config = CircularSlider.validate_config(config);
+        $.extend(config, data_config)
+        $.extend(config, options)
+        this.config = CircularSlider.validate_config(config)
 
-        var cisl_id = id + '-cisl';
-        $(id).after(
-            '<span class="cisl cisl--style" id="' + cisl_id.replace(/^#/, "") + '">' +
-            '<span class="cisl-ruler"></span>' +
-            '<span class="cisl-label cisl-label-from cisl--style"></span>' +
-            '<span class="cisl-label cisl-label-to cisl--style"></span>' +
-            '<span class="cisl-label cisl-label-from-to cisl--style"></span>' +
-            '<span class="cisl-line cisl-rails cisl--style"></span>' +
-            '<span class="cisl-line cisl-bar cisl--style"></span>' +
-            '<span class="cisl-line cisl-bar-cover cisl--style"></span>' +
-            '<span class="cisl-line cisl-bar-cover-cover cisl--style" tabindex=3></span>' +
-            '<span class="cisl-handle cisl-from cisl--style" tabindex="1"></span>' +
-            '<span class="cisl-handle cisl-to cisl--style" tabindex="2"></span>' +
-            '</span>'
-        );
-
-        this.$container = $(cisl_id);
-        this.$rails = $(cisl_id + " .cisl-rails");
-        this.$ruler = $(cisl_id + " .cisl-ruler");
-        this.$bar = $(cisl_id + " .cisl-bar");
-        this.$bar_cover = $(cisl_id + " .cisl-bar-cover");
-        this.$bar_cover_cover = $(cisl_id + " .cisl-bar-cover-cover");
-        this.$handle_from = $(cisl_id + " .cisl-from");
-        this.$handle_to = $(cisl_id + " .cisl-to");
-        this.$label_from = $(cisl_id + " .cisl-label-from");
-        this.$label_from_to = $(cisl_id + " .cisl-label-from-to");
-        this.$label_to = $(cisl_id + " .cisl-label-to");
-
-        // Store the params for faster access
-        this.border_shape_params = this.get_border_shape_params()
-
-        // Draw the ruler
+        // To make it responsive, catch resizing events or css changes 
+        // and re-draw the thing.
         // TODO: allow for initial rotation of the ruler
-        this.update_ruler(this.config.n_breaks, this.config.major_breaks_every)
+        var cisl_id = id + '-cisl'
+        this.draw_slider(id, cisl_id)
 
         // Set the positions of the moving parts
         this.angle_from = null
         this.angle_to = null
-        this.update_slider(this.config.from, this.config.to)
+        this.update_slider(this.value2angle(this.config.from), this.value2angle(this.config.to))
 
         // Callbacks
         this.onStart = null
@@ -101,83 +124,100 @@ class CircularSlider {
                 this.onStart()
             }
             $(window).on("mouseup touchend", function(e_up) {
-                $(window).off("mousemove touchmove")
+                $(window).off("mousemove touchmove mouseup touchend")
                 if (typeof this.onFinish === "function") {
                     this.onFinish()
                 }
-            })
+            }.bind(this))
             $(window).on("mousemove touchmove", function(e_move) {
                 var pageX = e_move.pageX || e_move.originalEvent.touches[0].pageX
                 var pageY = e_move.pageY || e_move.originalEvent.touches[0].pageY
                 var new_angle = this.get_angle_from_page_coords(pageX, pageY)
-                if ($(e_down.target).hasClass("cisl-to") || $(e_down.target).hasClass("cisl-label-to")) {
+                if ($(e_down.target).hasClass("cisl-handle-to") || $(e_down.target).hasClass("cisl-label-to")) {
                     this.update_slider(this.angle_from, new_angle)
-                } else if ($(e_down.target).hasClass("cisl-from") || $(e_down.target).hasClass("cisl-label-from")) {
+                } else if ($(e_down.target).hasClass("cisl-handle-from") || $(e_down.target).hasClass("cisl-label-from")) {
                     this.update_slider(new_angle, this.angle_to)
                 }
             }.bind(this))
         }.bind(this))
-        $(cisl_id + " .cisl-bar-cover-cover," + cisl_id + " .cisl-label-from-to").on("mousedown touchstart", function(e_down) {
+        $(cisl_id + " .cisl-rails," + cisl_id + " .cisl-bar," + cisl_id + " .cisl-label-from-to").on("mousedown touchstart", function(e_down) {
             e_down.preventDefault()
             var pageX = e_down.pageX || e_down.originalEvent.touches[0].pageX
             var pageY = e_down.pageY || e_down.originalEvent.touches[0].pageY
-            var angle_down = CircularSlider.normalise_angle(this.get_angle_from_page_coords(pageX, pageY), this.angle_to)
-            var angle_from_down = CircularSlider.normalise_angle(this.angle_from, this.angle_to)
+            var angle_down = this.get_angle_from_page_coords(pageX, pageY)
+            var angle_from_down = this.angle_from
             var angle_to_down = this.angle_to
-            if (angle_from_down < angle_down && angle_down < angle_to_down) {
-                var slice_from = angle_down - angle_from_down
-                var slice_to = angle_to_down - angle_down
-                $(e_down.target).focus()
-                if (typeof this.onStart === "function") {
-                    this.onStart()
-                }
-                $(window).on("mouseup touchend", function(e_up) {
-                    $(window).off("mousemove touchmove")
-                    if (typeof this.onFinish === "function") {
-                        this.onFinish()
-                    }
-                })
-                $(window).on("mousemove touchmove", function(e_move) {
-                    var pageX = e_move.pageX || e_move.originalEvent.touches[0].pageX
-                    var pageY = e_move.pageY || e_move.originalEvent.touches[0].pageY
-                    var angle_from = this.get_angle_from_page_coords(pageX, pageY) - slice_from
-                    var angle_to = this.get_angle_from_page_coords(pageX, pageY) + slice_to
-                    this.update_slider(angle_from, angle_to)
-                }.bind(this))
-            }
-        }.bind(this))
-        $(cisl_id + " .cisl-handle," + cisl_id + " .cisl-label," + cisl_id + " .cisl-bar-cover-cover").on("keydown", function(e_press) {
-            switch (e_press.which) {
-                case 39: var weight = 1; break;
-                case 37: var weight = -1; break;
-                default: var weight = 0;
-            }
-            if (weight == 0) {
-                return
-            }
+            var slice_from = arc_length(angle_from_down, angle_down)
+            var slice_to = arc_length(angle_down, angle_to_down)
+            $(e_down.target).focus()
             if (typeof this.onStart === "function") {
                 this.onStart()
+            }
+            $(window).on("mouseup touchend", function(e_up) {
+                $(window).off("mousemove touchmove mouseup touchend")
+                if (typeof this.onFinish === "function") {
+                    this.onFinish()
+                }
+            }.bind(this))
+            $(window).on("mousemove touchmove", function(e_move) {
+                if (e_move.pageX == 0 && e_move.originalEvent.touches === undefined)
+                    return
+                var pageX = e_move.pageX || e_move.originalEvent.touches[0].pageX
+                var pageY = e_move.pageY || e_move.originalEvent.touches[0].pageY
+                var angle_from = this.get_angle_from_page_coords(pageX, pageY) - slice_from
+                var angle_to = this.get_angle_from_page_coords(pageX, pageY) + slice_to
+                this.update_slider(angle_from, angle_to)
+            }.bind(this))
+        }.bind(this))
+        $(cisl_id + " .cisl-handle," + cisl_id + " .cisl-label," + cisl_id + " .cisl-bar").on("keydown", function(e_press) {
+            e_press.preventDefault()
+            var scale = false // whether to move (false) or to expand/contract (true)
+            switch (e_press.which) {
+                case 38: // up
+                    scale = true
+                case 37: // left
+                    var weight = -1
+                    break
+                case 40: // down
+                    scale = true
+                case 39: // right
+                    var weight = 1
+                    break
+                default:
+                    return
             }
             if (e_press.shiftKey) {
                 weight *= 10
             }
             if (this.config.step === null) {
-                if ($(e_press.target).hasClass("cisl-to") || $(e_press.target).hasClass("cisl-label-to")) {
-                    this.update_slider(this.angle_from, this.angle_to + weight * Math.PI / 50) // advance 1 percent
-                } else if ($(e_press.target).hasClass("cisl-from") || $(e_press.target).hasClass("cisl-label-from")) {
-                    this.update_slider(this.angle_from + weight * Math.PI / 50, this.angle_to)
-                } else if ($(e_press.target).hasClass("cisl-bar-cover-cover") || $(e_press.target).hasClass("cisl-label-from-to")) {
-                    this.update_slider(this.angle_from + weight * Math.PI / 50, this.angle_to + weight * Math.PI / 50) // advance 1 percent
-                }
-            } else {
-                if ($(e_press.target).hasClass("cisl-to") || $(e_press.target).hasClass("cisl-label-to")) {
-                    this.update_slider(this.angle_from, this.angle_to + this.value2angle(weight * this.config.step))
-                } else if ($(e_press.target).hasClass("cisl-from") || $(e_press.target).hasClass("cisl-label-from")) {
-                    this.update_slider(this.angle_from + this.value2angle(weight * this.config.step), this.angle_to)
-                } else if ($(e_press.target).hasClass("cisl-bar-cover-cover") || $(e_press.target).hasClass("cisl-label-from-to")) {
-                    this.update_slider(this.angle_from + this.value2angle(weight * this.config.step), this.angle_to + this.value2angle(weight * this.config.step))
-                }
+                weight *= Math.PI / 50 // advance 1 or 10 percent
+            } else if (e_press.ctrlKey) {
+                weight = arc_length(this.value2angle(this.config.min), this.value2angle(this.config.min + weight * this.config.step)) // advance 1 or 10 steps
             }
+            if (typeof this.onStart === "function") {
+                this.onStart()
+            }
+            if ($(e_press.target).hasClass("cisl-handle-to") || $(e_press.target).hasClass("cisl-label-to")) {
+                this.update_slider(this.angle_from, this.angle_to + weight)
+            } else if ($(e_press.target).hasClass("cisl-handle-from") || $(e_press.target).hasClass("cisl-label-from")) {
+                this.update_slider(this.angle_from + weight, this.angle_to)
+            } else if ($(e_press.target).hasClass("cisl-bar") || $(e_press.target).hasClass("cisl-label-from-to")) {
+                if (scale)
+                    this.update_slider(this.angle_from - weight, this.angle_to + weight)
+                else
+                    this.update_slider(this.angle_from + weight, this.angle_to + weight)
+            }
+            if (typeof this.onFinish === "function") {
+                this.onFinish()
+            }
+        }.bind(this))
+        $(cisl_id + " .cisl-handle," + cisl_id + " .cisl-bar," + cisl_id + " .cisl-rails").on("wheel", function(e_wheel) {
+            e_wheel.preventDefault()
+            var weight = 0.01 * e_wheel.originalEvent.deltaY
+            if (typeof this.onStart === "function") {
+                this.onStart()
+            }
+            this.update_slider(this.angle_from - weight * Math.PI / 50, this.angle_to + weight * Math.PI / 50) // zoom in/out 1 percent
             if (typeof this.onFinish === "function") {
                 this.onFinish()
             }
@@ -194,48 +234,36 @@ class CircularSlider {
             shape: "circle",
             abs_center: {
                 /* Center relative to the document */
-                x: this.$rails.offset().left + this.$rails.width() / 2,
-                y: this.$rails.offset().top + this.$rails.height() / 2
+                x: this.$container.offset().left + this.$rails[0].cx.baseVal.value,
+                y: this.$container.offset().top + this.$rails[0].cx.baseVal.value
             },
             rel_center: {
                 /* Center relative to the container */
-                x: this.$rails.outerWidth() / 2,
-                y: this.$rails.outerHeight() / 2
+                x: this.$rails[0].cx.baseVal.value,
+                y: this.$rails[0].cx.baseVal.value
             },
-            // The following is not good because it includes the 
-            // padding, but I'm after the border only.
-            // radius: (this.$rails.width() + (this.$rails.outerWidth() - this.$rails.width()) / 2) / 2
             // TODO: parse units and convert to px
-            radius: (this.$rails.width() + parseFloat(this.$rails.css("border-width"))) / 2,
-            outer_radius: this.$rails.width() / 2 + parseFloat(this.$rails.css("border-width"))
+            radius: this.$rails[0].r.baseVal.value,
+            border_width: parseFloat(this.$rails_border.css("stroke-width"))
         }
         return p
     }
 
-    get_coords_on_border = function(angle, outer = false) {
+    get_coords_on_border = function(angle, altitude = 0) {
         /* Given the angle, get the coordinates on the rails
          *
          * It should be different for each shape of the rails. Maybe I 
          * should create another class, one for each shape of the rails, 
          * and use its methods.
          */
-        var x = (outer ? this.border_shape_params.outer_radius : this.border_shape_params.radius) * Math.cos(angle - Math.PI / 2) + this.border_shape_params.rel_center.x
-        var y = (outer ? this.border_shape_params.outer_radius : this.border_shape_params.radius) * Math.sin(angle - Math.PI / 2) + this.border_shape_params.rel_center.y
+        var x = (this.border_shape_params.radius + altitude) * Math.cos(angle - Math.PI / 2) + this.border_shape_params.rel_center.x
+        var y = (this.border_shape_params.radius + altitude) * Math.sin(angle - Math.PI / 2) + this.border_shape_params.rel_center.y
         return [x, y]
     }
 
     get_rotation_on_border = function(angle) {
         /* Given the angle, return the rotation on the border */
         return angle
-    }
-
-    get_slider_value = function(angle) {
-        /* Given an angle, return the closest admissible value, given 
-         * the step */
-        var value = angle * (this.config.max - this.config.min) / (2 * Math.PI)
-        if (this.config.step === null)
-            return value
-        return this.config.step * Math.round(value / this.config.step)
     }
 
     get_angle_from_page_coords = function(x, y) {
@@ -248,9 +276,18 @@ class CircularSlider {
         return angle
     }
 
+    angle2value = function(angle) {
+        /* Given an angle, return the closest admissible value, given 
+         * the step */
+        var value = this.config.min + angle * (this.config.max - this.config.min) / (2 * Math.PI)
+        if (this.config.step === null)
+            return value
+        return this.config.step * Math.round(value / this.config.step)
+    }
+
     value2angle = function(value) {
         /* Given a value, return the corresponding angle */
-        return 2 * Math.PI * value / (this.config.max - this.config.min)
+        return 2 * Math.PI * (value - this.config.min) / (this.config.max - this.config.min)
     }
 
     adjust_angle = function(angle) {
@@ -266,7 +303,56 @@ class CircularSlider {
             angle = angle - 2 * Math.PI
         if (this.config.step === null)
             return angle
-        return this.value2angle(this.get_slider_value(angle))
+        return this.value2angle(this.angle2value(angle))
+    }
+
+    draw_slider = function(id, cisl_id) {
+        $(id).after(
+            '<svg id=' + cisl_id.replace(/^#/, "") + ' height=' + this.config.height + ' width=' + this.config.width + '>' +
+            '<foreignObject width=100% height=100%>' +
+            '<span class="cisl-label cisl-label-from cisl--style"></span>' +
+            '<span class="cisl-label cisl-label-to cisl--style"></span>' +
+            '<span class="cisl-label cisl-label-from-to cisl--style"></span>' +
+            '</foreignObject>' +
+            '<circle class="cisl-rails-border cisl--style" ' +
+                'cx=50% cy=50% r=40% fill="transparent">' +
+            '</circle>' +
+            '<circle class="cisl-rails cisl--style" ' +
+                'cx=50% cy=50% r=40% fill="transparent">' +
+            '</circle>' +
+            '<path class="cisl-bar cisl--style" fill="transparent" tabindex="3" />' +
+            '<rect class="cisl-handle cisl-handle-from cisl--style" tabindex="1" />' +
+            '<rect class="cisl-handle cisl-handle-to cisl--style" tabindex="2" />' +
+            '</svg>'
+        )
+        // Store the slider elements
+        this.$container = $(cisl_id)
+        this.$rails = $(cisl_id + " .cisl-rails")
+        this.$rails_border = $(cisl_id + " .cisl-rails-border")
+        this.$ruler = $(cisl_id + " .cisl-ruler")
+        this.$bar = $(cisl_id + " .cisl-bar")
+        this.$handle_from = $(cisl_id + " .cisl-handle-from")
+        this.$handle_to = $(cisl_id + " .cisl-handle-to")
+        this.$label_from = $(cisl_id + " .cisl-label-from")
+        this.$label_to = $(cisl_id + " .cisl-label-to")
+        this.$label_from_to = $(cisl_id + " .cisl-label-from-to")
+        // Store the border params
+        this.border_shape_params = this.get_border_shape_params()
+        // Draw the ruler
+        this.draw_ruler()
+    }
+
+    draw_ruler = function() {
+        for (var i = 0; i < this.config.breaks_n; i++) {
+            var angle_tick = this.adjust_angle(i * 2 * Math.PI / this.config.breaks_n)
+            var coord_tick = this.get_coords_on_border(angle_tick, this.border_shape_params.border_width / 2)
+            var coord_break = this.get_coords_on_border(angle_tick, this.config.breaks_altitude)
+            create_tick(coord_tick[0], coord_tick[1], angle_tick, "cisl-tick-minor cisl--style").insertBefore(".cisl-rails-border")
+            if (i % this.config.major_breaks_every == 0) {
+                create_tick(coord_tick[0], coord_tick[1], angle_tick, "cisl-tick-major cisl--style").insertBefore(".cisl-rails-border")
+                create_break(coord_break[0], coord_break[1], angle_tick, "cisl-break-major cisl--style", this.format_label(this.angle2value(angle_tick))).insertBefore(".cisl-rails-border")
+            }
+        }
     }
 
     update_slider = function(angle_from, angle_to) {
@@ -274,118 +360,103 @@ class CircularSlider {
         angle_to = this.adjust_angle(angle_to)
         var coord_from = this.get_coords_on_border(angle_from)
         var coord_to = this.get_coords_on_border(angle_to)
-        var bars_colors = this.get_bar_border_colors(angle_from, angle_to, this.$bar.css("border-top-color"))
-        this.hide_conflicting_labels(angle_from, angle_to)
-        this.update_labels(angle_from, angle_to)
-        this.$handle_from.css({
-            "left": coord_from[0],
-            "top": coord_from[1],
-            "transform": "translate(-50%, -50%) rotate(" + angle_from + "rad)"
-        })
-        this.$handle_to.css({
-            "left": coord_to[0],
-            "top": coord_to[1],
-            "transform": "translate(-50%, -50%) rotate(" + angle_to + "rad)"
-        })
-        this.$bar.css({
-            "border-color": bars_colors[0],
-            "transform": "rotate(" + (angle_from + Math.PI/4) + "rad)"
-        })
-        this.$bar_cover.css({
-            "border-color": this.$rails.css("border-color") + "transparent transparent transparent",
-            "transform": "rotate(" + (angle_to + Math.PI/4) + "rad)"
-        })
-        this.$bar_cover_cover.css({
-            "border-color": bars_colors[1],
-            "transform": "rotate(" + (angle_from + Math.PI/4) + "rad)"
-        })
+        this.update_handles(coord_from, coord_to, angle_from, angle_to) // put the handles in the correct place
+        this.update_bar(coord_from, coord_to, angle_from, angle_to) // put the bar in the correct place
+        this.update_labels(angle_from, angle_to) // put the labels in the correct place
         this.angle_from = angle_from
         this.angle_to = angle_to
-        this.$input.val(this.get_value())
+        this.$input.val(this.get_value_string())
     }
 
-    update_labels = function(angle_from, angle_to, between = Math.PI / 20, sep) {
-        if (sep === undefined)
-            sep = this.config.values_sep
-        var coord_from = this.get_coords_on_border(angle_from, true)
-        var coord_to = this.get_coords_on_border(angle_to, true)
-        if (CircularSlider.angular_dist(angle_from, angle_to) >= between) {
+    update_labels = function(angle_from, angle_to, collapse_between = Math.PI / 20, hide_between = Math.PI / 20) {
+        if (angular_dist(angle_from, angle_to) >= collapse_between) {
+            var coord_from = this.get_coords_on_border(angle_from, this.config.labels_altitude)
+            var coord_to = this.get_coords_on_border(angle_to, this.config.labels_altitude)
             this.$label_from.show()
             this.$label_to.show()
             this.$label_from_to.hide()
             this.$label_from.css({
                 "left": coord_from[0],
                 "top": coord_from[1],
-                "transform": "translate(-50%, -100%) rotate(" + angle_from + "rad)"
+                "transform": "translate(-50%,-100%) rotate(" + angle_from + "rad)"
             })
-            this.$label_from.html(this.config.prefix + this.format_label(this.get_slider_value(angle_from)) + this.config.postfix)
+            this.$label_from.html(this.config.prefix + this.format_label(this.angle2value(angle_from)) + this.config.postfix)
             this.$label_to.css({
                 "left": coord_to[0],
                 "top": coord_to[1],
-                "transform": "translate(-50%, -100%) rotate(" + angle_to + "rad)"
+                "transform": "translate(-50%,-100%) rotate(" + angle_to + "rad)"
             })
-            this.$label_to.html(this.config.prefix + this.format_label(this.get_slider_value(angle_to)) + this.config.postfix)
+            this.$label_to.html(this.config.prefix + this.format_label(this.angle2value(angle_to)) + this.config.postfix)
+            // Hide breaks covered by the labels
+            var outer_this = this
+            this.$container.children(".cisl-break-major").each(function(i, e) {
+                if (angular_dist(angle_from, outer_this.value2angle(parseFloat($(this).html()))) < hide_between || angular_dist(angle_to, outer_this.value2angle(parseFloat($(this).html()))) < hide_between)
+                    $(this).hide()
+                else
+                    $(this).show()
+            })
         } else {
             this.$label_from.hide()
             this.$label_to.hide()
             this.$label_from_to.show()
+            var angle_from_to = angle_from + arc_length(angle_from, angle_to) / 2
+            var coord_from_to = this.get_coords_on_border(angle_from_to, this.config.labels_altitude)
             this.$label_from_to.css({
-                "left": (coord_from[0] + coord_to[0]) / 2,
-                "top": (coord_from[1] + coord_to[1]) / 2,
-                "transform": "translate(-50%, -100%) rotate(" + (CircularSlider.arc_length(angle_from, angle_to) <= Math.PI ? (angle_from + CircularSlider.angular_dist(angle_from, angle_to) / 2) : (angle_from - CircularSlider.angular_dist(angle_from, angle_to))) + "rad)"
+                "left": (coord_from_to[0] + coord_from_to[0]) / 2,
+                "top": (coord_from_to[1] + coord_from_to[1]) / 2,
+                "transform": "translate(-50%,-100%) rotate(" + angle_from_to + "rad)"
             })
-            this.$label_from_to.html(this.config.prefix + this.format_label(this.get_slider_value(angle_from)) + sep + this.format_label(this.get_slider_value(angle_to)) + this.config.postfix)
-        }
-    }
-
-    update_ruler = function(n_breaks, major_breaks_every) {
-        this.$ruler.html("")
-        for (var i = 0; i < n_breaks; i++) {
-            var angle_tick = this.adjust_angle(i * 2 * Math.PI / n_breaks)
-            var coord_tick = this.get_coords_on_border(angle_tick, true)
-            $('<span class="cisl-tick-minor cisl--style" style="left: ' + coord_tick[0] + '; top: ' + coord_tick[1] + '; transform: translate(-50%, -100%) rotate(' + angle_tick + 'rad)"></span>').appendTo(this.$ruler)
-            if (i % major_breaks_every == 0) {
-                $('<span class="cisl-tick-major cisl--style" style="left: ' + coord_tick[0] + '; top: ' + coord_tick[1] + '; transform: translate(-50%, -100%) rotate(' + angle_tick + 'rad)"></span>').appendTo(this.$ruler)
-                $('<span class="cisl-break-major cisl--style" style="left: ' + coord_tick[0] + '; top: ' + coord_tick[1] + '; transform: translate(-50%, -100%) rotate(' + angle_tick + 'rad)">' + this.format_label(this.get_slider_value(angle_tick)) + '</span>').appendTo(this.$ruler)
+            this.$label_from_to.html(this.config.prefix + this.format_label(this.angle2value(angle_from)) + this.config.values_sep + this.format_label(this.angle2value(angle_to)) + this.config.postfix)
+            // Hide breaks covered by the labels
+            var outer_this = this
+            if (arc_length(angle_from, angle_to) > Math.PI) {
+                angle_from -= Math.PI
+                angle_to -= Math.PI
             }
+            this.$container.children(".cisl-break-major").each(function(i, e) {
+                if (angular_dist(angle_from, outer_this.value2angle(parseFloat($(this).html()))) < 1.5 * hide_between || angular_dist(angle_to, outer_this.value2angle(parseFloat($(this).html()))) < 1.5 * hide_between)
+                    $(this).hide()
+                else
+                    $(this).show()
+            })
         }
     }
 
-    hide_conflicting_labels = function(angle_from, angle_to, between = Math.PI / 20) {
-        var outer_this = this
-        this.$ruler.children(".cisl-break-major").each(function(i, e) {
-            if (CircularSlider.angular_dist(angle_from, outer_this.value2angle(parseFloat($(this).html()))) < between || CircularSlider.angular_dist(angle_to, outer_this.value2angle(parseFloat($(this).html()))) < between)
-                $(this).hide()
-            else
-                $(this).show()
+    update_handles = function(coord_from, coord_to, angle_from, angle_to) {
+        this.$handle_from.attr({
+            "x": coord_from[0],
+            "y": coord_from[1],
+            "style": 'transform: translate(-50%,-50%) rotate(' + angle_from + 'rad)'
+        })
+        this.$handle_to.attr({
+            "x": coord_to[0],
+            "y": coord_to[1],
+            "style": 'transform: translate(-50%,-50%) rotate(' + angle_to + 'rad)'
         })
     }
 
-    get_value = function(sep) {
-        if (sep === undefined)
-            sep = this.config.values_sep
-        return this.get_slider_value(this.angle_from) + sep + this.get_slider_value(this.angle_to)
+    update_bar = function(coord_from, coord_to, angle_from, angle_to) {
+        var d = "M " + coord_from[0] + " " + coord_from[1] + " " +
+            "A " + this.border_shape_params.radius + " " + this.border_shape_params.radius + " " +
+            "0 " + ((arc_length(angle_from, angle_to) <= Math.PI) ? "0 " : "1 ") + "1 " +
+            coord_to[0] + " " + coord_to[1] + " " +
+            "A " + this.border_shape_params.radius + " " + this.border_shape_params.radius + " " +
+            "0 " + ((arc_length(angle_to, angle_from) <= Math.PI) ? "0 " : "1 ") + "1 " +
+            coord_from[0] + " " + coord_from[1]
+        var dasharray = arc_length(angle_from, angle_to) * this.border_shape_params.radius + " " + 2 * Math.PI * this.border_shape_params.radius
+        this.$bar.attr({
+            "d": d,
+            "stroke-dasharray": dasharray
+        })
+    }
+
+    get_value_string = function() {
+        return this.angle2value(this.angle_from) + this.config.values_sep + this.angle2value(this.angle_to)
     }
 
     format_label = function(n) {
-        return Math.trunc(n * Math.pow(10, this.config.digits)) / Math.pow(10, this.config.digits)
-    }
-
-    get_bar_border_colors = function(angle_from, angle_to, official_color) {
-        var bar_border_colors = ""
-        var bar_cover_cover_border_colors = "transparent"
-        var lengths = CircularSlider.arc_length(angle_from, angle_to) / (Math.PI / 2)
-        if (lengths <= 1) {
-            bar_border_colors = official_color + " transparent transparent transparent"
-        } else if (lengths <= 2) {
-            bar_border_colors = official_color + " " + official_color + " transparent transparent"
-        } else if (lengths <= 3) {
-            bar_border_colors = official_color + " " + official_color + " " + official_color + " transparent"
-        } else {
-            bar_border_colors = official_color + " " + official_color + " " + official_color + " " + official_color
-            bar_cover_cover_border_colors = official_color + " transparent transparent transparent"
-        }
-        return [bar_border_colors, bar_cover_cover_border_colors]
+        // return Math.trunc(n * Math.pow(10, this.config.digits)) / Math.pow(10, this.config.digits)
+        return n.toFixed(this.config.digits)
     }
 
     static validate_config = function(config) {
@@ -398,19 +469,5 @@ class CircularSlider {
             throw Error("Not enough steps: at least three are required; either increase the range of the slider or decrease the step size.")
         }
         return config
-    }
-
-    static angular_dist = function(a, b) {
-        return Math.min(Math.abs(b - a), Math.abs(b - (a + 2 * Math.PI)), Math.abs((b + 2 * Math.PI) - a))
-    }
-
-    static arc_length = function(from, to) {
-        if (from > to)
-            from = -(2 * Math.PI - from)
-        return to - from
-    }
-
-    static normalise_angle = function(from, to) {
-        return from > to ? -(2 * Math.PI - from) : from
     }
 }
