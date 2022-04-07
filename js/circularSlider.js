@@ -45,6 +45,66 @@ var arc_length = function(from, to) {
     return to - from
 }
 
+var parse_length = function(length, viewport) {
+    /* Convert a CSS length to px
+     *
+     * Based on the following documents:
+     * https://developer.mozilla.org/en-US/docs/Learn/CSS/Building_blocks/Values_and_units
+     * https://developer.mozilla.org/en-US/docs/Web/SVG/Attribute/stroke-width
+     * https://www.w3.org/TR/SVG2/coords.html
+     *
+     * In particular, for percentages, the stroke-width is computed with 
+     * respect to the normalised diagonal length of the viewport. The 
+     * normalised diagonal is the diagonal divided by sqrt(2).
+     *
+     * Conversion factors have been precomputed.
+     */
+    if (typeof(length) == "number")
+        return length
+    else if (typeof(length) != "string") {
+        console.warn("The length should be either a number or a string, not a" + typeof(length))
+        return undefined
+    }
+    var value = parseFloat(length)
+    var unit = length.replace(value, "")
+    if (unit == "") // assume it's already in px
+        return value
+    var px = undefined
+    switch (unit) {
+        case "cm":
+            px = value / 37.8
+            break
+        case "mm":
+            px = value / 3.78
+            break
+        case "Q":
+            px = value / 0.945
+            break
+        case "in":
+            px = value / 96.012
+            break
+        case "pc":
+            px = value / 16.002
+            break
+        case "pt":
+            px = value / 1.3335
+            break
+        case "px":
+            px = value
+            break
+        case "%":
+            if (viewport === undefined) {
+                console.warn("You have to provide the viewport as an argument when the length is a percentage.")
+                break
+            }
+            px = value / 100 * Math.sqrt(viewport.width.baseVal.value**2 + viewport.height.baseVal.value**2) / Math.sqrt(2)
+            break
+        default:
+            console.warn("The unit" + unit + "could not be recognised.")
+    }
+    return px
+}
+
 class CircularSlider {
     /* CircularSlider
      *
@@ -60,8 +120,8 @@ class CircularSlider {
 
         // User configuration
         var config = {
-            height: 900,
-            width: 900,
+            height: 600,
+            width: 600,
             min: 0,
             max: 2 * Math.PI,
             from: 0, // initial values for from and to
@@ -69,8 +129,8 @@ class CircularSlider {
             step: (2 * Math.PI) / 50, // DOC: can be null, in which case we've got a continuous slider
             breaks_n: 60,
             major_breaks_every: 5, // put a major break (and a label) every x minor breaks
-            breaks_altitude: 45, // altitude of the break
-            labels_altitude: 40, // altitude of the labels
+            breaks_altitude: 30, // recommended: width / 20
+            labels_altitude: 25, // recommended: breaks_altitude - 5
             digits: 2, // how many digits should labels and breaks have
             prefix: "",
             postfix: "",
@@ -143,7 +203,6 @@ class CircularSlider {
                 }
             }.bind(this))
         }.bind(this))
-
         $(cisl_id + " .cisl-rails," + cisl_id + " .cisl-bar," + cisl_id + " .cisl-label-from-to").on("mousedown touchstart", function(e_down) {
             e_down.preventDefault()
             var pageX = e_down.pageX || e_down.originalEvent.touches[0].pageX
@@ -248,7 +307,7 @@ class CircularSlider {
             },
             // TODO: parse units and convert to px
             radius: this.$rails[0].r.baseVal.value,
-            border_width: parseFloat(this.$rails_border.css("stroke-width"))
+            border_width: parse_length(this.$rails_border.css("stroke-width"), this.$rails_border[0].viewportElement)
         }
         return p
     }
@@ -319,10 +378,10 @@ class CircularSlider {
             '<span class="cisl-label cisl-label-from-to cisl--style"></span>' +
             '</foreignObject>' +
             '<circle class="cisl-rails-border cisl--style" ' +
-                'cx=50% cy=50% r=40% fill="transparent">' +
+                'cx=50% cy=50% r=38% fill="transparent">' +
             '</circle>' +
             '<circle class="cisl-rails cisl--style" ' +
-                'cx=50% cy=50% r=40% fill="transparent">' +
+                'cx=50% cy=50% r=38% fill="transparent">' +
             '</circle>' +
             '<path class="cisl-bar cisl--style" fill="transparent" tabindex="3" />' +
             '<rect class="cisl-handle cisl-handle-from cisl--style" tabindex="1" />' +
@@ -347,14 +406,20 @@ class CircularSlider {
     }
 
     draw_ruler = function() {
-        for (var i = 0; i < this.config.breaks_n; i++) {
-            var angle_tick = this.adjust_angle(i * 2 * Math.PI / this.config.breaks_n)
-            var coord_tick = this.get_coords_on_border(angle_tick, this.border_shape_params.border_width / 2)
-            var coord_break = this.get_coords_on_border(angle_tick, this.config.breaks_altitude)
-            create_tick(coord_tick[0], coord_tick[1], angle_tick, "cisl-tick-minor cisl--style").insertBefore(".cisl-rails-border")
+        var angle_tick = this.adjust_angle(0)
+        var coord_tick = this.get_coords_on_border(angle_tick, this.border_shape_params.border_width / 2)
+        var first_tick = create_tick(coord_tick[0], coord_tick[1], angle_tick, "cisl-tick-major cisl--style").insertBefore(this.$rails_border)
+        var coord_break = this.get_coords_on_border(angle_tick, this.config.breaks_altitude)
+        create_break(coord_break[0], coord_break[1], angle_tick, "cisl-break-major cisl--style", this.format_label(this.angle2value(angle_tick))).insertBefore(this.$rails_border)
+        for (var i = 1; i < this.config.breaks_n; i++) {
+            angle_tick = this.adjust_angle(i * 2 * Math.PI / this.config.breaks_n)
+            coord_tick = this.get_coords_on_border(angle_tick, this.border_shape_params.border_width / 2)
+            coord_break = this.get_coords_on_border(angle_tick, this.config.breaks_altitude)
             if (i % this.config.major_breaks_every == 0) {
-                create_tick(coord_tick[0], coord_tick[1], angle_tick, "cisl-tick-major cisl--style").insertBefore(".cisl-rails-border")
-                create_break(coord_break[0], coord_break[1], angle_tick, "cisl-break-major cisl--style", this.format_label(this.angle2value(angle_tick))).insertBefore(".cisl-rails-border")
+                create_tick(coord_tick[0], coord_tick[1], angle_tick, "cisl-tick-major cisl--style").insertBefore(this.$rails_border)
+                create_break(coord_break[0], coord_break[1], angle_tick, "cisl-break-major cisl--style", this.format_label(this.angle2value(angle_tick))).insertBefore(this.$rails_border)
+            } else {
+                create_tick(coord_tick[0], coord_tick[1], angle_tick, "cisl-tick-minor cisl--style").insertBefore(this.$rails_border)
             }
         }
     }
@@ -473,11 +538,13 @@ class CircularSlider {
          * Check the config values and either fix them with a warning or 
          * throw an error.
          */
+        // Check that we have enough steps
         if ((config.max - config.min) / config.step < 3) {
             throw Error("Not enough steps: at least three are required; either increase the range of the slider or decrease the step size.")
         }
+        // Check that height == width
         if (config.height != config.width) {
-            console.warn("Width cannot be different from height; I'm now setting them to the same value. Please try again when ellipses will be supported.")
+            console.warn("Width cannot be different from height; I'm now setting both to the minimum between them. Please try again when ellipses will be supported.")
             config.height = config.width = Math.min(config.height, config.width)
         }
         return config
