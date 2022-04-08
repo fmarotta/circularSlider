@@ -126,14 +126,14 @@ class CircularSlider {
             height: 600,
             width: 600,
             min: 0,
-            max: 2 * Math.PI,
+            max: 100,
             from: 0, // initial values for from and to
-            to: Math.PI / 4,
-            step: (2 * Math.PI) / 50, // DOC: can be null, in which case we've got a continuous slider
-            breaks_n: 60,
+            to: 25,
+            step: null, // DOC: can be set to null or 0, in which case we've got a continuous slider
+            breaks_n: 50,
             major_breaks_every: 5, // put a major break (and a label) every x minor breaks
             breaks_altitude: "5%",
-            labels_altitude: "2%",
+            labels_altitude: "3.5%",
             ruler_inside: true, // whether the ruler should be drawn inside the circle
             digits: 2, // how many digits should labels and breaks have
             prefix: "",
@@ -159,7 +159,7 @@ class CircularSlider {
             values_sep: this.$input.data("values-sep")
         }
         for (var prop in data_config) {
-            if (data_config.hasOwnProperty(prop) && (data_config[prop] === undefined || isNaN(data_config[prop]) || data_config[prop] === "")) {
+            if (data_config[prop] === undefined || (typeof(data_config[prop]) == "number" && isNaN(data_config[prop])) || data_config[prop] == "") {
                 delete data_config[prop]
             }
         }
@@ -490,7 +490,7 @@ class CircularSlider {
         this.$input.val(this.get_value_string())
     }
 
-    update_labels = function(angle_from, angle_to, collapse_between = Math.PI / 20, hide_between = Math.PI / 20) {
+    update_labels = function(angle_from, angle_to, collapse_between = Math.PI / 10, hide_between = Math.PI / 10) {
         if (angular_dist(angle_from, angle_to) >= collapse_between) {
             var coord_from = this.get_coords_on_border(angle_from, this.border_shape_params.labels_altitude)
             var coord_to = this.get_coords_on_border(angle_to, this.border_shape_params.labels_altitude)
@@ -578,10 +578,10 @@ class CircularSlider {
 
     remove = function() {
         var cisl_id = this.cisl_id
-        $(cisl_id + " .cisl-handle," + cisl_id + " .cisl-label-from," + cisl_id + " .cisl-label-to").off("mousedown touchstart")
-        $(cisl_id + " .cisl-rails," + cisl_id + " .cisl-bar," + cisl_id + " .cisl-label-from-to").off("mousedown touchstart")
-        $(cisl_id + " .cisl-handle," + cisl_id + " .cisl-label," + cisl_id + " .cisl-bar").off("keydown")
-        $(cisl_id + " .cisl-handle," + cisl_id + " .cisl-bar," + cisl_id + " .cisl-rails").off("wheel")
+        $(cisl_id).off("mousedown touchstart", ".cisl-handle,.cisl-label-from,.cisl-label-to,.cisl-rails,.cisl-bar,.cisl-label-from-to")
+        $(cisl_id).off("dblclick", ".cisl-rails,.cisl-bar")
+        $(cisl_id).off("keydown", ".cisl-handle,.cisl-label,.cisl-bar")
+        $(cisl_id).off("wheel", ".cisl-handle,.cisl-bar,.cisl-rails")
         this.$input.show()
         $.data(this.$input, "circularSlider", null)
     }
@@ -606,11 +606,13 @@ class CircularSlider {
          * throw an error.
          */
         // Check that we have enough steps
-        if (config.step == "null") {
+        if (config.step == "null" || config.step == 0) {
             config.step = null
         }
         if (config.step != null && (config.max - config.min) / config.step < 3) {
             throw Error("Not enough steps: at least three are required; either increase the range of the slider or decrease the step size.")
+        } else if (config.step != null && (config.max - config.min) / config.step < config.breaks_n) {
+            throw Error("Step size too big or not enough breaks; you can decrease the range of the slider, increase `step', or decrease `breaks_n'.")
         }
         // Check that height == width
         if (config.height != config.width) {
@@ -618,7 +620,7 @@ class CircularSlider {
             config.height = config.width = Math.min(config.height, config.width)
         }
         // Convert to boolean
-        config.ruler_inside = String(config.ruler_inside).toLowerCase() == "true"
+        config.ruler_inside = (String(config.ruler_inside).toLowerCase() == "true")
         return config
     }
 }
