@@ -102,7 +102,7 @@ var parse_length = function(length, viewport) {
                 console.warn("You have to provide the viewport as an argument when the length is a percentage.")
                 break
             }
-            px = value / 100 * Math.sqrt(viewport.width.baseVal.value**2 + viewport.height.baseVal.value**2) / Math.sqrt(2)
+            px = value / 100 * Math.sqrt(viewport.getBBox().width**2 + viewport.getBBox().height**2) / Math.sqrt(2)
             break
         default:
             console.warn("The unit" + unit + "could not be recognised.")
@@ -114,7 +114,6 @@ class CircularSlider {
     /* CircularSlider
      *
      * Design improvements for the future:
-     * - Use JQuery's event delegation
      * - Add classes cisl-event-*
      * - Add a method to update the config dynamically
      */
@@ -133,8 +132,8 @@ class CircularSlider {
             step: (2 * Math.PI) / 50, // DOC: can be null, in which case we've got a continuous slider
             breaks_n: 60,
             major_breaks_every: 5, // put a major break (and a label) every x minor breaks
-            breaks_altitude: 30, // recommended: width / 20
-            labels_altitude: 25, // recommended: breaks_altitude - 5
+            breaks_altitude: "5%",
+            labels_altitude: "2%",
             ruler_inside: true, // whether the ruler should be drawn inside the circle
             digits: 2, // how many digits should labels and breaks have
             prefix: "",
@@ -144,23 +143,23 @@ class CircularSlider {
         var data_config = {
             height: this.$input.data("height"),
             width: this.$input.data("width"),
-            min: this.$input.data("min"),
-            max: this.$input.data("max"),
-            from: this.$input.data("from"),
-            to: this.$input.data("to"),
+            min: parseFloat(this.$input.data("min")),
+            max: parseFloat(this.$input.data("max")),
+            from: parseFloat(this.$input.data("from")),
+            to: parseFloat(this.$input.data("to")),
             step: this.$input.data("step"),
-            breaks_n: this.$input.data("breaks-n"),
-            major_breaks_every: this.$input.data("major-breaks-every"),
+            breaks_n: parseInt(this.$input.data("breaks-n")),
+            major_breaks_every: parseInt(this.$input.data("major-breaks-every")),
             breaks_altitude: this.$input.data("breaks-altitude"),
             labels_altitude: this.$input.data("labels-altitude"),
-            ruler_inside: Boolean(this.$input.data("ruler-inside")),
-            digits: this.$input.data("digits"),
+            ruler_inside: this.$input.data("ruler-inside"),
+            digits: parseInt(this.$input.data("digits")),
             prefix: this.$input.data("prefix"),
             postfix: this.$input.data("postfix"),
             values_sep: this.$input.data("values-sep")
         }
         for (var prop in data_config) {
-            if (data_config.hasOwnProperty(prop) && (data_config[prop] === undefined || data_config[prop] === "")) {
+            if (data_config.hasOwnProperty(prop) && (data_config[prop] === undefined || isNaN(data_config[prop]) || data_config[prop] === "")) {
                 delete data_config[prop]
             }
         }
@@ -191,8 +190,6 @@ class CircularSlider {
         this.onFinish = null
 
         // Bind the events
-        // TODO onclick, move the closest handle towards the clicked 
-        // point.
         $(cisl_id).on("mousedown touchstart", ".cisl-handle,.cisl-label-from,.cisl-label-to", function(e_down) {
             e_down.preventDefault()
             $(e_down.target).focus()
@@ -200,6 +197,8 @@ class CircularSlider {
                 this.onStart()
             }
             $(window).one("mouseup touchend", function(e_up) {
+                e_up.stopPropagation()
+                e_up.stopImmediatePropagation()
                 $(window).off("mousemove." + cisl_id_nopound + " touchmove." + cisl_id_nopound)
                 if (typeof this.onFinish === "function") {
                     this.onFinish()
@@ -252,6 +251,19 @@ class CircularSlider {
                 var angle_to = this.get_angle_from_page_coords(pageX, pageY) + slice_to
                 this.update_slider(angle_from, angle_to)
             }.bind(this))
+        }.bind(this))
+        $(cisl_id).on("dblclick", ".cisl-rails,.cisl-bar", function(e_click) {
+            e_click.preventDefault()
+            var pageX = e_click.pageX || e_click.originalEvent.touches[0].pageX
+            var pageY = e_click.pageY || e_click.originalEvent.touches[0].pageY
+            var new_angle = this.get_angle_from_page_coords(pageX, pageY)
+            var dist_from = angular_dist(this.angle_from, new_angle)
+            var dist_to = angular_dist(this.angle_to, new_angle)
+            if (dist_from <= dist_to) {
+                this.update_slider(new_angle, this.angle_to)
+            } else {
+                this.update_slider(this.angle_from, new_angle)
+            }
         }.bind(this))
         $(cisl_id).on("keydown", ".cisl-handle,.cisl-label,.cisl-bar", function(e_press) {
             e_press.preventDefault()
@@ -338,7 +350,9 @@ class CircularSlider {
             },
             // TODO: parse units and convert to px
             radius: this.$rails[0].r.baseVal.value,
-            border_width: parse_length(this.$rails_border.css("stroke-width"), this.$rails_border[0].viewportElement)
+            border_width: parse_length(this.$rails_border.css("stroke-width"), this.$container[0]),
+            breaks_altitude: this.config.ruler_inside ? -parse_length(this.config.breaks_altitude, this.$container[0]) : parse_length(this.config.breaks_altitude, this.$container[0]),
+            labels_altitude: parse_length(this.config.labels_altitude, this.$container[0])
         }
         return p
     }
@@ -438,17 +452,18 @@ class CircularSlider {
     }
 
     draw_ruler = function() {
+        if (this.config.breaks_n == 0)
+            return
         var inside = this.config.ruler_inside
-        var breaks_altitude = inside ? -this.config.breaks_altitude : this.config.breaks_altitude
         var angle_tick = this.adjust_angle(0)
         var coord_tick = this.get_coords_on_border(angle_tick, (1 - 2 * inside) * this.border_shape_params.border_width / 2)
         var first_tick = create_tick(coord_tick[0], coord_tick[1], angle_tick, "cisl-tick-major cisl--style", inside).insertBefore(this.$rails_border)
-        var coord_break = this.get_coords_on_border(angle_tick, breaks_altitude)
+        var coord_break = this.get_coords_on_border(angle_tick, this.border_shape_params.breaks_altitude)
         create_break(coord_break[0], coord_break[1], angle_tick, "cisl-break-major cisl--style", this.format_label(this.angle2value(angle_tick))).insertBefore(this.$rails_border)
         for (var i = 1; i < this.config.breaks_n; i++) {
             angle_tick = this.adjust_angle(i * 2 * Math.PI / this.config.breaks_n)
             coord_tick = this.get_coords_on_border(angle_tick, (1 - 2 * inside) * this.border_shape_params.border_width / 2)
-            coord_break = this.get_coords_on_border(angle_tick, breaks_altitude)
+            coord_break = this.get_coords_on_border(angle_tick, this.border_shape_params.breaks_altitude)
             if (i % this.config.major_breaks_every == 0) {
                 create_tick(coord_tick[0], coord_tick[1], angle_tick, "cisl-tick-major cisl--style", inside).insertBefore(this.$rails_border)
                 create_break(coord_break[0], coord_break[1], angle_tick, "cisl-break-major cisl--style", this.format_label(this.angle2value(angle_tick))).insertBefore(this.$rails_border)
@@ -477,8 +492,8 @@ class CircularSlider {
 
     update_labels = function(angle_from, angle_to, collapse_between = Math.PI / 20, hide_between = Math.PI / 20) {
         if (angular_dist(angle_from, angle_to) >= collapse_between) {
-            var coord_from = this.get_coords_on_border(angle_from, this.config.labels_altitude)
-            var coord_to = this.get_coords_on_border(angle_to, this.config.labels_altitude)
+            var coord_from = this.get_coords_on_border(angle_from, this.border_shape_params.labels_altitude)
+            var coord_to = this.get_coords_on_border(angle_to, this.border_shape_params.labels_altitude)
             this.$label_from.show()
             this.$label_to.show()
             this.$label_from_to.hide()
@@ -509,7 +524,7 @@ class CircularSlider {
             this.$label_to.hide()
             this.$label_from_to.show()
             var angle_from_to = angle_from + arc_length(angle_from, angle_to) / 2
-            var coord_from_to = this.get_coords_on_border(angle_from_to, this.config.labels_altitude)
+            var coord_from_to = this.get_coords_on_border(angle_from_to, this.border_shape_params.labels_altitude)
             this.$label_from_to.css({
                 "left": (coord_from_to[0] + coord_from_to[0]) / 2,
                 "top": (coord_from_to[1] + coord_from_to[1]) / 2,
@@ -591,7 +606,10 @@ class CircularSlider {
          * throw an error.
          */
         // Check that we have enough steps
-        if ((config.max - config.min) / config.step < 3) {
+        if (config.step == "null") {
+            config.step = null
+        }
+        if (config.step != null && (config.max - config.min) / config.step < 3) {
             throw Error("Not enough steps: at least three are required; either increase the range of the slider or decrease the step size.")
         }
         // Check that height == width
@@ -599,6 +617,8 @@ class CircularSlider {
             console.warn("Width cannot be different from height; I'm now setting both to the minimum between them. Please try again when ellipses will be supported.")
             config.height = config.width = Math.min(config.height, config.width)
         }
+        // Convert to boolean
+        config.ruler_inside = String(config.ruler_inside).toLowerCase() == "true"
         return config
     }
 }

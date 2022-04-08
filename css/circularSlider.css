@@ -1,6 +1,6 @@
 .cisl-container {
-    max-width: min(100vw, 100vh);
-    max-height: min(100vw, 100vh);
+    max-width: 100vmin;
+    max-height: 100vmin;
 }
 .cisl-tick-minor,
 .cisl-tick-major {
@@ -13,14 +13,18 @@
     text-anchor: middle;
     text-align: center;
     dominant-baseline: central;
+    white-space: nowrap;
     outline: none !important;
+    cursor: default;
 }
 .cisl-label {
     position: absolute;
     transform-box: fill-box;
     transform-origin: bottom center;
     text-align: center;
+    white-space: nowrap;
     outline: none !important;
+    cursor: default;
 }
 .cisl-rails {
     outline: none !important;
