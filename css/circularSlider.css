@@ -1,3 +1,7 @@
+.cisl-container {
+    max-width: min(100vw, 100vh);
+    max-height: min(100vw, 100vh);
+}
 .cisl-tick-minor,
 .cisl-tick-major {
     transform-box: fill-box;
@@ -9,8 +13,6 @@
     text-anchor: middle;
     text-align: center;
     dominant-baseline: central;
-    font-family: monospace, monospace;
-    font-size: clamp(0.5rem, 1.5vw, 1.5rem);
     outline: none !important;
 }
 .cisl-label {
@@ -18,8 +20,6 @@
     transform-box: fill-box;
     transform-origin: bottom center;
     text-align: center;
-    font-family: monospace, monospace;
-    font-size: clamp(0.5rem, 1.5vw, 1.5rem);
     outline: none !important;
 }
 .cisl-rails {
@@ -47,6 +47,9 @@
     width: 0.4%;
     fill: lightgray;
 }
+.cisl--style.cisl-break-major {
+    font-family: monospace, monospace;
+}
 .cisl--style.cisl-label {
     padding: 2px;
     background-color: transparent;
@@ -54,6 +57,7 @@
     border-color: black;
     border-width: 1px;
     border-radius: 5px;
+    font-family: monospace, monospace;
 }
 .cisl--style.cisl-rails-border {
     stroke-width: 2.2%;

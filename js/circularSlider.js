@@ -1,6 +1,8 @@
 (function(window, document, $) {
 
-var create_tick = function(x, y, angle, cl) {
+var plugin_count = 0
+
+var create_tick = function(x, y, angle, cl, inside = false) {
     /* create_tick
      *
      * JQuery cannot handle SVG directly because SVG elements lie in a 
@@ -8,6 +10,9 @@ var create_tick = function(x, y, angle, cl) {
      * create SVG elements first, and then append them. This function 
      * creates ticks.
      */
+    if (inside) {
+        angle += Math.PI
+    }
     var t = document.createElementNS("http://www.w3.org/2000/svg", "rect")
     t.setAttributeNS(null, "class", cl)
     t.setAttributeNS(null, "x", x)
@@ -109,12 +114,11 @@ class CircularSlider {
     /* CircularSlider
      *
      * Design improvements for the future:
-     * - Make it responsive (how?)
      * - Use JQuery's event delegation
      * - Add classes cisl-event-*
      * - Add a method to update the config dynamically
      */
-    constructor(input, options = {}) {
+    constructor(input, options = {}, plugin_count) {
         this.$input = $(input)
         this.$input.hide()
 
@@ -130,7 +134,8 @@ class CircularSlider {
             breaks_n: 60,
             major_breaks_every: 5, // put a major break (and a label) every x minor breaks
             breaks_altitude: 30, // recommended: width / 20
-            labels_altitude: 25, // recommended: breaks_altitude - 5
+            ruler_inside: true, // whether the ruler should be drawn inside the circle
+            labels_altitude: 10, // recommended: breaks_altitude - 5
             digits: 2, // how many digits should labels and breaks have
             prefix: "",
             postfix: "",
@@ -147,6 +152,7 @@ class CircularSlider {
             breaks_n: this.$input.data("breaks-n"),
             major_breaks_every: this.$input.data("major-breaks-every"),
             breaks_altitude: this.$input.data("breaks-altitude"),
+            ruler_inside: this.$input.data("ruler-inside"),
             labels_altitude: this.$input.data("labels-altitude"),
             digits: this.$input.data("digits"),
             prefix: this.$input.data("prefix"),
@@ -162,16 +168,22 @@ class CircularSlider {
         $.extend(config, options)
         this.config = CircularSlider.validate_config(config)
 
-        // To make it responsive, catch resizing events or css changes 
-        // and re-draw the thing.
         // TODO: allow for initial rotation of the ruler
-        var cisl_id = "#" + this.$input.attr("id") + "-cisl"
-        this.draw_slider(cisl_id)
+        var cisl_id = "#cisl-"
+        if (this.$input.attr("id") != undefined && this.$input.attr("id") != "") {
+            cisl_id += this.$input.attr("id")
+        } else if (this.$input.data("input-id") != undefined && this.$input.data("input-id") != "") {
+            cisl_id += this.$input.data("input-id")
+        } else {
+            cisl_id += plugin_count
+        }
+        this.cisl_id = cisl_id
+        this.draw_slider()
 
         // Set the positions of the moving parts
         this.angle_from = null
         this.angle_to = null
-        this.update_slider(this.value2angle(this.config.from), this.value2angle(this.config.to))
+        this.update_slider_value(this.config.from, this.config.to)
 
         // Callbacks
         this.onStart = null
@@ -187,14 +199,19 @@ class CircularSlider {
                 this.onStart()
             }
             $(window).on("mouseup touchend", function(e_up) {
-                $(window).off("mousemove touchmove mouseup touchend")
+                $(cisl_id + " .cisl-handle," + cisl_id + " .cisl-label").not(".cisl-label-from-to").off("mousemove touchmove mouseup touchend")
                 if (typeof this.onFinish === "function") {
                     this.onFinish()
                 }
             }.bind(this))
             $(window).on("mousemove touchmove", function(e_move) {
-                var pageX = e_move.pageX || e_move.originalEvent.touches[0].pageX
-                var pageY = e_move.pageY || e_move.originalEvent.touches[0].pageY
+                if (e_move.pageX == 0 && e_move.originalEvent.touches === undefined) {
+                    var pageX = 0
+                    var pageY = e_move.pageY || e_move.originalEvent.touches[0].pageY
+                } else {
+                    var pageX = e_move.pageX || e_move.originalEvent.touches[0].pageX
+                    var pageY = e_move.pageY || e_move.originalEvent.touches[0].pageY
+                }
                 var new_angle = this.get_angle_from_page_coords(pageX, pageY)
                 if ($(e_down.target).hasClass("cisl-handle-to") || $(e_down.target).hasClass("cisl-label-to")) {
                     this.update_slider(this.angle_from, new_angle)
@@ -217,16 +234,19 @@ class CircularSlider {
                 this.onStart()
             }
             $(window).on("mouseup touchend", function(e_up) {
-                $(window).off("mousemove touchmove mouseup touchend")
+                $(cisl_id + " .cisl-rails," + cisl_id + " .cisl-bar," + cisl_id + " .cisl-label-from-to").off("mousemove touchmove mouseup touchend")
                 if (typeof this.onFinish === "function") {
                     this.onFinish()
                 }
             }.bind(this))
             $(window).on("mousemove touchmove", function(e_move) {
-                if (e_move.pageX == 0 && e_move.originalEvent.touches === undefined)
-                    return
-                var pageX = e_move.pageX || e_move.originalEvent.touches[0].pageX
-                var pageY = e_move.pageY || e_move.originalEvent.touches[0].pageY
+                if (e_move.pageX == 0 && e_move.originalEvent.touches === undefined) {
+                    var pageX = 0
+                    var pageY = e_move.pageY || e_move.originalEvent.touches[0].pageY
+                } else {
+                    var pageX = e_move.pageX || e_move.originalEvent.touches[0].pageX
+                    var pageY = e_move.pageY || e_move.originalEvent.touches[0].pageY
+                }
                 var angle_from = this.get_angle_from_page_coords(pageX, pageY) - slice_from
                 var angle_to = this.get_angle_from_page_coords(pageX, pageY) + slice_to
                 this.update_slider(angle_from, angle_to)
@@ -284,6 +304,16 @@ class CircularSlider {
             if (typeof this.onFinish === "function") {
                 this.onFinish()
             }
+        }.bind(this))
+
+        // Detect resizes
+        $(window).resize(function() {
+            $(cisl_id + " .cisl-tick-major").remove()
+            $(cisl_id + " .cisl-tick-minor").remove()
+            $(cisl_id + " .cisl-break-major").remove()
+            this.border_shape_params = this.get_border_shape_params()
+            this.draw_ruler()
+            this.update_slider(this.angle_from, this.angle_to)
         }.bind(this))
     }
 
@@ -369,14 +399,21 @@ class CircularSlider {
         return this.value2angle(this.angle2value(angle))
     }
 
-    draw_slider = function(cisl_id) {
+    draw_slider = function() {
+        var cisl_id = this.cisl_id
         this.$input.after(
-            '<svg id=' + cisl_id.replace(/^#/, "") + ' height=' + this.config.height + ' width=' + this.config.width + '>' +
+            '<svg id=' + cisl_id.replace(/^#/, "") + ' class="cisl-container" height=' + this.config.height + ' width=' + this.config.width + '>' +
             '<foreignObject width=100% height=100%>' +
             '<span class="cisl-label cisl-label-from cisl--style"></span>' +
             '<span class="cisl-label cisl-label-to cisl--style"></span>' +
             '<span class="cisl-label cisl-label-from-to cisl--style"></span>' +
             '</foreignObject>' +
+            '<defs>' +
+            '<linearGradient id="cisl-gradient" x2="0" y2="1">' +
+                '<stop offset="-50%" stop-color="#dedede" />' +
+                '<stop offset="150%" stop-color="#fff" />' +
+            '</linearGradient>' +
+            '</defs>' +
             '<circle class="cisl-rails-border cisl--style" ' +
                 'cx=50% cy=50% r=38% fill="transparent">' +
             '</circle>' +
@@ -406,22 +443,28 @@ class CircularSlider {
     }
 
     draw_ruler = function() {
+        var inside = this.config.ruler_inside
+        var breaks_altitude = inside ? -this.config.breaks_altitude : this.config.breaks_altitude
         var angle_tick = this.adjust_angle(0)
-        var coord_tick = this.get_coords_on_border(angle_tick, this.border_shape_params.border_width / 2)
-        var first_tick = create_tick(coord_tick[0], coord_tick[1], angle_tick, "cisl-tick-major cisl--style").insertBefore(this.$rails_border)
-        var coord_break = this.get_coords_on_border(angle_tick, this.config.breaks_altitude)
+        var coord_tick = this.get_coords_on_border(angle_tick, (1 - 2 * inside) * this.border_shape_params.border_width / 2)
+        var first_tick = create_tick(coord_tick[0], coord_tick[1], angle_tick, "cisl-tick-major cisl--style", inside).insertBefore(this.$rails_border)
+        var coord_break = this.get_coords_on_border(angle_tick, breaks_altitude)
         create_break(coord_break[0], coord_break[1], angle_tick, "cisl-break-major cisl--style", this.format_label(this.angle2value(angle_tick))).insertBefore(this.$rails_border)
         for (var i = 1; i < this.config.breaks_n; i++) {
             angle_tick = this.adjust_angle(i * 2 * Math.PI / this.config.breaks_n)
-            coord_tick = this.get_coords_on_border(angle_tick, this.border_shape_params.border_width / 2)
-            coord_break = this.get_coords_on_border(angle_tick, this.config.breaks_altitude)
+            coord_tick = this.get_coords_on_border(angle_tick, (1 - 2 * inside) * this.border_shape_params.border_width / 2)
+            coord_break = this.get_coords_on_border(angle_tick, breaks_altitude)
             if (i % this.config.major_breaks_every == 0) {
-                create_tick(coord_tick[0], coord_tick[1], angle_tick, "cisl-tick-major cisl--style").insertBefore(this.$rails_border)
+                create_tick(coord_tick[0], coord_tick[1], angle_tick, "cisl-tick-major cisl--style", inside).insertBefore(this.$rails_border)
                 create_break(coord_break[0], coord_break[1], angle_tick, "cisl-break-major cisl--style", this.format_label(this.angle2value(angle_tick))).insertBefore(this.$rails_border)
             } else {
-                create_tick(coord_tick[0], coord_tick[1], angle_tick, "cisl-tick-minor cisl--style").insertBefore(this.$rails_border)
+                create_tick(coord_tick[0], coord_tick[1], angle_tick, "cisl-tick-minor cisl--style", inside).insertBefore(this.$rails_border)
             }
         }
+    }
+
+    update_slider_value = function(value_from, value_to) {
+        return this.update_slider(this.value2angle(value_from), this.value2angle(value_to))
     }
 
     update_slider = function(angle_from, angle_to) {
@@ -457,13 +500,15 @@ class CircularSlider {
             })
             this.$label_to.html(this.config.prefix + this.format_label(this.angle2value(angle_to)) + this.config.postfix)
             // Hide breaks covered by the labels
-            var outer_this = this
-            this.$container.children(".cisl-break-major").each(function(i, e) {
-                if (angular_dist(angle_from, outer_this.value2angle(parseFloat($(this).html()))) < hide_between || angular_dist(angle_to, outer_this.value2angle(parseFloat($(this).html()))) < hide_between)
-                    $(this).hide()
-                else
-                    $(this).show()
-            })
+            if (!this.config.ruler_inside) {
+                var outer_this = this
+                this.$container.children(".cisl-break-major").each(function(i, e) {
+                    if (angular_dist(angle_from, outer_this.value2angle(parseFloat($(this).html()))) < hide_between || angular_dist(angle_to, outer_this.value2angle(parseFloat($(this).html()))) < hide_between)
+                        $(this).hide()
+                    else
+                        $(this).show()
+                })
+            }
         } else {
             this.$label_from.hide()
             this.$label_to.hide()
@@ -477,17 +522,19 @@ class CircularSlider {
             })
             this.$label_from_to.html(this.config.prefix + this.format_label(this.angle2value(angle_from)) + this.config.values_sep + this.format_label(this.angle2value(angle_to)) + this.config.postfix)
             // Hide breaks covered by the labels
-            var outer_this = this
-            if (arc_length(angle_from, angle_to) > Math.PI) {
-                angle_from -= Math.PI
-                angle_to -= Math.PI
+            if (!this.config.ruler_inside) {
+                var outer_this = this
+                if (arc_length(angle_from, angle_to) > Math.PI) {
+                    angle_from -= Math.PI
+                    angle_to -= Math.PI
+                }
+                this.$container.children(".cisl-break-major").each(function(i, e) {
+                    if (angular_dist(angle_from, outer_this.value2angle(parseFloat($(this).html()))) < 1.5 * hide_between || angular_dist(angle_to, outer_this.value2angle(parseFloat($(this).html()))) < 1.5 * hide_between)
+                        $(this).hide()
+                    else
+                        $(this).show()
+                })
             }
-            this.$container.children(".cisl-break-major").each(function(i, e) {
-                if (angular_dist(angle_from, outer_this.value2angle(parseFloat($(this).html()))) < 1.5 * hide_between || angular_dist(angle_to, outer_this.value2angle(parseFloat($(this).html()))) < 1.5 * hide_between)
-                    $(this).hide()
-                else
-                    $(this).show()
-            })
         }
     }
 
@@ -517,6 +564,16 @@ class CircularSlider {
             "d": d,
             "stroke-dasharray": dasharray
         })
+    }
+
+    remove = function() {
+        var cisl_id = this.cisl_id
+        $(cisl_id + " .cisl-handle," + cisl_id + " .cisl-label").not(".cisl-label-from-to").off("mousedown touchstart")
+        $(cisl_id + " .cisl-rails," + cisl_id + " .cisl-bar," + cisl_id + " .cisl-label-from-to").off("mousedown touchstart")
+        $(cisl_id + " .cisl-handle," + cisl_id + " .cisl-label," + cisl_id + " .cisl-bar").off("keydown")
+        $(cisl_id + " .cisl-handle," + cisl_id + " .cisl-bar," + cisl_id + " .cisl-rails").off("wheel")
+        this.$input.show()
+        $.data(this.$input, "circularSlider", null)
     }
 
     get_value_string = function() {
@@ -554,7 +611,7 @@ class CircularSlider {
 $.fn.circularSlider = function(options) {
     return this.each(function() {
         if (!$.data(this, "circularSlider")) {
-            $.data(this, "circularSlider", new CircularSlider(this, options))
+            $.data(this, "circularSlider", new CircularSlider(this, options, plugin_count++))
         }
     })
 }
