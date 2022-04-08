@@ -134,8 +134,8 @@ class CircularSlider {
             breaks_n: 60,
             major_breaks_every: 5, // put a major break (and a label) every x minor breaks
             breaks_altitude: 30, // recommended: width / 20
+            labels_altitude: 25, // recommended: breaks_altitude - 5
             ruler_inside: true, // whether the ruler should be drawn inside the circle
-            labels_altitude: 10, // recommended: breaks_altitude - 5
             digits: 2, // how many digits should labels and breaks have
             prefix: "",
             postfix: "",
@@ -152,8 +152,8 @@ class CircularSlider {
             breaks_n: this.$input.data("breaks-n"),
             major_breaks_every: this.$input.data("major-breaks-every"),
             breaks_altitude: this.$input.data("breaks-altitude"),
-            ruler_inside: this.$input.data("ruler-inside"),
             labels_altitude: this.$input.data("labels-altitude"),
+            ruler_inside: Boolean(this.$input.data("ruler-inside")),
             digits: this.$input.data("digits"),
             prefix: this.$input.data("prefix"),
             postfix: this.$input.data("postfix"),
@@ -178,6 +178,7 @@ class CircularSlider {
             cisl_id += plugin_count
         }
         this.cisl_id = cisl_id
+        var cisl_id_nopound = cisl_id.replace(/^#/, '')
         this.draw_slider()
 
         // Set the positions of the moving parts
@@ -192,19 +193,19 @@ class CircularSlider {
         // Bind the events
         // TODO onclick, move the closest handle towards the clicked 
         // point.
-        $(cisl_id + " .cisl-handle," + cisl_id + " .cisl-label").not(".cisl-label-from-to").on("mousedown touchstart", function(e_down) {
+        $(cisl_id).on("mousedown touchstart", ".cisl-handle,.cisl-label-from,.cisl-label-to", function(e_down) {
             e_down.preventDefault()
             $(e_down.target).focus()
             if (typeof this.onStart === "function") {
                 this.onStart()
             }
-            $(window).on("mouseup touchend", function(e_up) {
-                $(cisl_id + " .cisl-handle," + cisl_id + " .cisl-label").not(".cisl-label-from-to").off("mousemove touchmove mouseup touchend")
+            $(window).one("mouseup touchend", function(e_up) {
+                $(window).off("mousemove." + cisl_id_nopound + " touchmove." + cisl_id_nopound)
                 if (typeof this.onFinish === "function") {
                     this.onFinish()
                 }
             }.bind(this))
-            $(window).on("mousemove touchmove", function(e_move) {
+            $(window).on("mousemove." + cisl_id_nopound + " touchmove." + cisl_id_nopound, function(e_move) {
                 if (e_move.pageX == 0 && e_move.originalEvent.touches === undefined) {
                     var pageX = 0
                     var pageY = e_move.pageY || e_move.originalEvent.touches[0].pageY
@@ -220,7 +221,7 @@ class CircularSlider {
                 }
             }.bind(this))
         }.bind(this))
-        $(cisl_id + " .cisl-rails," + cisl_id + " .cisl-bar," + cisl_id + " .cisl-label-from-to").on("mousedown touchstart", function(e_down) {
+        $(cisl_id).on("mousedown touchstart", ".cisl-rails,.cisl-bar,.cisl-label-from-to", function(e_down) {
             e_down.preventDefault()
             var pageX = e_down.pageX || e_down.originalEvent.touches[0].pageX
             var pageY = e_down.pageY || e_down.originalEvent.touches[0].pageY
@@ -233,13 +234,13 @@ class CircularSlider {
             if (typeof this.onStart === "function") {
                 this.onStart()
             }
-            $(window).on("mouseup touchend", function(e_up) {
-                $(cisl_id + " .cisl-rails," + cisl_id + " .cisl-bar," + cisl_id + " .cisl-label-from-to").off("mousemove touchmove mouseup touchend")
+            $(window).one("mouseup touchend", function(e_up) {
+                $(window).off("mousemove." + cisl_id_nopound + " touchmove." + cisl_id_nopound)
                 if (typeof this.onFinish === "function") {
                     this.onFinish()
                 }
             }.bind(this))
-            $(window).on("mousemove touchmove", function(e_move) {
+            $(window).on("mousemove." + cisl_id_nopound + " touchmove." + cisl_id_nopound, function(e_move) {
                 if (e_move.pageX == 0 && e_move.originalEvent.touches === undefined) {
                     var pageX = 0
                     var pageY = e_move.pageY || e_move.originalEvent.touches[0].pageY
@@ -252,7 +253,7 @@ class CircularSlider {
                 this.update_slider(angle_from, angle_to)
             }.bind(this))
         }.bind(this))
-        $(cisl_id + " .cisl-handle," + cisl_id + " .cisl-label," + cisl_id + " .cisl-bar").on("keydown", function(e_press) {
+        $(cisl_id).on("keydown", ".cisl-handle,.cisl-label,.cisl-bar", function(e_press) {
             e_press.preventDefault()
             var scale = false // whether to move (false) or to expand/contract (true)
             switch (e_press.which) {
@@ -294,7 +295,7 @@ class CircularSlider {
                 this.onFinish()
             }
         }.bind(this))
-        $(cisl_id + " .cisl-handle," + cisl_id + " .cisl-bar," + cisl_id + " .cisl-rails").on("wheel", function(e_wheel) {
+        $(cisl_id).on("wheel", ".cisl-handle,.cisl-bar,.cisl-rails", function(e_wheel) {
             e_wheel.preventDefault()
             var weight = 0.01 * e_wheel.originalEvent.deltaY
             if (typeof this.onStart === "function") {
@@ -408,12 +409,6 @@ class CircularSlider {
             '<span class="cisl-label cisl-label-to cisl--style"></span>' +
             '<span class="cisl-label cisl-label-from-to cisl--style"></span>' +
             '</foreignObject>' +
-            '<defs>' +
-            '<linearGradient id="cisl-gradient" x2="0" y2="1">' +
-                '<stop offset="-50%" stop-color="#dedede" />' +
-                '<stop offset="150%" stop-color="#fff" />' +
-            '</linearGradient>' +
-            '</defs>' +
             '<circle class="cisl-rails-border cisl--style" ' +
                 'cx=50% cy=50% r=38% fill="transparent">' +
             '</circle>' +
@@ -568,7 +563,7 @@ class CircularSlider {
 
     remove = function() {
         var cisl_id = this.cisl_id
-        $(cisl_id + " .cisl-handle," + cisl_id + " .cisl-label").not(".cisl-label-from-to").off("mousedown touchstart")
+        $(cisl_id + " .cisl-handle," + cisl_id + " .cisl-label-from," + cisl_id + " .cisl-label-to").off("mousedown touchstart")
         $(cisl_id + " .cisl-rails," + cisl_id + " .cisl-bar," + cisl_id + " .cisl-label-from-to").off("mousedown touchstart")
         $(cisl_id + " .cisl-handle," + cisl_id + " .cisl-label," + cisl_id + " .cisl-bar").off("keydown")
         $(cisl_id + " .cisl-handle," + cisl_id + " .cisl-bar," + cisl_id + " .cisl-rails").off("wheel")
