@@ -1,6 +1,6 @@
 .cisl-container {
-    max-width: 100vmin;
-    max-height: 100vmin;
+    max-width: 500px;
+    max-height: 500px;
 }
 .cisl-tick-minor,
 .cisl-tick-major {

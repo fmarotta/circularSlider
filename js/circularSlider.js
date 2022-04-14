@@ -123,8 +123,6 @@ class CircularSlider {
 
         // User configuration
         var config = {
-            height: 600,
-            width: 600,
             min: 0,
             max: 100,
             from: 0, // initial values for from and to
@@ -141,8 +139,6 @@ class CircularSlider {
             values_sep: ":"
         }
         var data_config = {
-            height: this.$input.data("height"),
-            width: this.$input.data("width"),
             min: parseFloat(this.$input.data("min")),
             max: parseFloat(this.$input.data("max")),
             from: parseFloat(this.$input.data("from")),
@@ -324,8 +320,6 @@ class CircularSlider {
             $(cisl_id + " .cisl-tick-major").remove()
             $(cisl_id + " .cisl-tick-minor").remove()
             $(cisl_id + " .cisl-break-major").remove()
-            this.$container.height(this.$container.width()) // mantain aspect ratio
-            this.$container.css("max-height", this.$container.width()) // even when reloading page
             this.border_shape_params = this.get_border_shape_params()
             this.draw_ruler()
             this.update_slider(this.angle_from, this.angle_to)
@@ -338,6 +332,8 @@ class CircularSlider {
          * In case of circular rails, we'd need the center and radius; 
          * for elliptical rails, the center and the axes; and so on.
          */
+        this.$container.height(this.$container.width()) // mantain aspect ratio
+        this.$container.css("max-height", this.$container.width()) // even when reloading page
         var p = {
             shape: "circle",
             abs_center: {
@@ -419,17 +415,17 @@ class CircularSlider {
     draw_slider = function() {
         var cisl_id = this.cisl_id
         this.$input.after(
-            '<svg id=' + cisl_id.replace(/^#/, "") + ' class="cisl-container" height=' + this.config.height + ' width=' + this.config.width + '>' +
+            '<svg id=' + cisl_id.replace(/^#/, "") + ' class="cisl-container" height="100%" width="100%" >' +
             '<foreignObject width=100% height=100%>' +
             '<span class="cisl-label cisl-label-from cisl--style"></span>' +
             '<span class="cisl-label cisl-label-to cisl--style"></span>' +
             '<span class="cisl-label cisl-label-from-to cisl--style"></span>' +
             '</foreignObject>' +
             '<circle class="cisl-rails-border cisl--style" ' +
-                'cx=50% cy=50% r=38% fill="transparent">' +
+                'cx=50% cy=50% r=35% fill="transparent">' +
             '</circle>' +
             '<circle class="cisl-rails cisl--style" ' +
-                'cx=50% cy=50% r=38% fill="transparent">' +
+                'cx=50% cy=50% r=35% fill="transparent">' +
             '</circle>' +
             '<path class="cisl-bar cisl--style" fill="transparent" tabindex="3" />' +
             '<rect class="cisl-handle cisl-handle-from cisl--style" tabindex="1" />' +
@@ -615,11 +611,6 @@ class CircularSlider {
             throw Error("Not enough steps: at least three are required; either increase the range of the slider or decrease the step size.")
         } else if (config.step != null && (config.max - config.min) / config.step < config.breaks_n) {
             throw Error("Step size too big or not enough breaks; you can decrease the range of the slider, increase `step', or decrease `breaks_n'.")
-        }
-        // Check that height == width
-        if (config.height != config.width) {
-            console.warn("Width cannot be different from height; I'm now setting both to the minimum between them. Please try again when ellipses will be supported.")
-            config.height = config.width = Math.min(config.height, config.width)
         }
         // Convert to boolean
         config.ruler_inside = (String(config.ruler_inside).toLowerCase() == "true")
