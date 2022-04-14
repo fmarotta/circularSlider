@@ -159,7 +159,7 @@ class CircularSlider {
             values_sep: this.$input.data("values-sep")
         }
         for (var prop in data_config) {
-            if (data_config[prop] === undefined || (typeof(data_config[prop]) == "number" && isNaN(data_config[prop])) || data_config[prop] == "") {
+            if (data_config[prop] === undefined || (typeof(data_config[prop]) == "number" && isNaN(data_config[prop])) || data_config[prop] === "") {
                 delete data_config[prop]
             }
         }
@@ -324,6 +324,8 @@ class CircularSlider {
             $(cisl_id + " .cisl-tick-major").remove()
             $(cisl_id + " .cisl-tick-minor").remove()
             $(cisl_id + " .cisl-break-major").remove()
+            this.$container.height(this.$container.width()) // mantain aspect ratio
+            this.$container.css("max-height", this.$container.width()) // even when reloading page
             this.border_shape_params = this.get_border_shape_params()
             this.draw_ruler()
             this.update_slider(this.angle_from, this.angle_to)
