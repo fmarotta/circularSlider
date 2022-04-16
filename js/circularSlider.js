@@ -392,7 +392,17 @@ class CircularSlider {
     }
 
     value2angle = function(value) {
-        /* Given a value, return the corresponding angle */
+        /* Given a value, return the corresponding angle
+         *
+         * When moving with the arrow keys, it may happen that one 
+         * keypress moves the value to something bigger than the maximum 
+         * value (even more than twice as big). Thus, it's necessary to 
+         * bring the value within the acceptable range first.
+         */
+        while (value < this.config.min)
+            value = this.config.max - (this.config.min - value)
+        if (value > this.config.max)
+            value %= this.config.max
         return 2 * Math.PI * (value - this.config.min) / (this.config.max - this.config.min)
     }
 
